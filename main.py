@@ -88,7 +88,6 @@ options_completer_r = NestedCompleter.from_nested_dict({
     'exit': None,
 })
 
-
 def print_options():
     print('\nOptions:')
     for option in options:
@@ -156,17 +155,31 @@ def display_standings():
 def display_team_info(team_name):
     print(f"Displaying information for {team_name}")
     # Add logic to display team information
+    abr = team_name.upper()
+    url = f'https://www.basketball-reference.com/teams/{abr}/2025.html'
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    # print(soup.prettify())
+    name = soup.find('h1').find_all('span')[1].text
     
+    stats = soup.find('div', id='meta').find('div', {'data-template': 'Partials/Teams/Summary'}).find_all('p')
+    record = stats[0].text.strip().replace('\n', ' ').replace('  ', ' ')
+    pts = stats[5].text.strip().replace('\n', ' ').replace('  ', ' ')
+    rtg = stats[7].text.strip().replace('\n', ' ').replace('  ', ' ')
+    
+    console = Console()
+    console.print(f"[bold]Team Name:[/bold] {name}")
+    console.print(f"[bold]Record:[/bold] {record}")
+    console.print(f"[bold]Off and Def Ratings:[/bold] {rtg}")
     
     print_options()
     options.pop()
-    return prompt("Enter your choice: ", completer=WordCompleter(['roster', 'standings', 'home', 'back', 'exit']))
+    return prompt("Enter your choice: ", completer=options_completer_r)
 
 def display_roster_names(team_name):
     print("Displaying roster names")
     # Add logic to display roster names
     abr = team_name.upper()
-    print(abr)
     url = f'https://www.basketball-reference.com/teams/{abr}/2025.html'
     """
     name = text field of second span of only h1 tag in document
