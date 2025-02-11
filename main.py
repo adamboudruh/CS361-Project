@@ -45,41 +45,104 @@ while input != "exit":
 """
 import json
 from basketball_reference_web_scraper import client
+from basketball_reference_web_scraper.data import Team
+from basketball_reference_web_scraper.data import Conference
+from prompt_toolkit import prompt
+from prompt_toolkit.shortcuts import message_dialog, yes_no_dialog
+from prompt_toolkit.styles import Style
+from prompt_toolkit.completion import WordCompleter, NestedCompleter
+from rich.table import Table
+from rich.console import Console
+
 
 # Load team aliases from teams.json
 with open('teams.json', 'r') as f:
     teams = json.load(f)
 
+options = [
+    {'option': 'standings', 'desc': 'view current eastern and western conference standings'},
+    {'option': 'home', 'desc': 'return to homepage'},
+    {'option': 'team <team_name>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'exit', 'desc': 'quit the program'}
+]
+
+options_completer = WordCompleter([option['option'] for option in options])
+
+def print_options():
+    print('\nOptions:')
+    for option in options:
+        print(f"\t{option['option']}: {option['desc']}")
+
 def get_team_name(alias):
-    for team in teams:
+    for team in teams['aliases']:
         if alias in team['aliases']:
             return team['team']
     return None
 
 def display_home():
-    print("Welcome to the NBA Stats Viewer!")
-    print("Options: home, standings, team <team_alias>, exit")
-    return input("Enter your choice: ")
+    print("Welcome to the NBA Fast stats!")
+    print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
 
 def display_standings():
     standings = client.standings(season_end_year=2025)
+    
+    #sort teams by least losses to most losses
+    standings.sort(key=lambda x: x['losses'])
+    
+    console = Console()
+    # Use rich to format into table with name, wins, losses, and pct(loss divided by win rounded to 3 decimals) columns and each team
+    
+    table_east = Table(title="Eastern Conference Standings")
+    
+    table_east.add_column("Team", justify="left", style="white", no_wrap=True)
+    table_east.add_column("Wins", justify="right", style="green")
+    table_east.add_column("Losses", justify="right", style="red")
+    table_east.add_column("Pct", justify="right", style="magenta")
+    
     for team in standings:
-        print(f"{team['team']} - {team['wins']} wins, {team['losses']} losses")
-    return input("Enter your choice: ")
+        if (team['conference'].value == 'EASTERN'):
+            team_name = team['team'].value
+            wins = team['wins']
+            losses = team['losses']
+            pct = round(wins / (wins + losses), 3)
+            table_east.add_row(team_name, str(wins), str(losses), str(pct))
+
+    print('\n')
+    console.print(table_east)
+    
+    table_west = Table(title="Western Conference Standings")
+    
+    table_west.add_column("Team", justify="left", style="cyan", no_wrap=True)
+    table_west.add_column("Wins", justify="right", style="green")
+    table_west.add_column("Losses", justify="right", style="red")
+    table_west.add_column("Pct", justify="right", style="magenta")
+    
+    for team in standings:
+        if (team['conference'].value == 'WESTERN'):
+            team_name = team['team'].value
+            wins = team['wins']
+            losses = team['losses']
+            pct = round(wins / (wins + losses), 3)
+            table_west.add_row(team_name, str(wins), str(losses), str(pct))
+
+    print('\n')
+    console.print(table_west)
+    
+    print("Options: \n\thome: return to homepage \n\tstandings: view current team standings \n\tteam <team_name>: view a current team's season statistics \n\texit: exit the program")
+    return prompt("Enter your choice: ")
 
 def display_team_info(team_name):
     print(f"Displaying information for {team_name}")
     # Add logic to display team information
-    return input("Enter your choice: ")
+    print_options()
+    options.pop()
+    return prompt("Enter your choice: ")
 
 def display_roster_names():
     print("Displaying roster names")
     # Add logic to display roster names
     return input("Enter your choice: ")
-
-def handle_back(prev_page):
-    print(f"Returning to {prev_page}")
-    return prev_page
 
 def display_invalid():
     print("Invalid input. Please try again.")
@@ -87,32 +150,59 @@ def display_invalid():
 
 prev_page = ''
 current_page = 'home'
-user_input = ""
+user_input = display_home()
 
-while user_input != "exit":
-    if current_page == 'home':
+while user_input:
+    
+    if user_input == 'home':
         user_input = display_home()
         prev_page = current_page
         current_page = 'home'
-    elif current_page == 'standings':
+        
+    elif user_input == 'standings':
         user_input = display_standings()
         prev_page = current_page
         current_page = 'standings'
-    elif user_input.startswith('team'):
-        team_alias = user_input.split(' ', 1)[1]
+        
+    elif user_input.split(' ', 1)[0] == 'team':
+        # gets the 3 letter abbreviation for team to look them up
+        team_alias = ' '.join(user_input.split(' ')[1:])
         team_name = get_team_name(team_alias)
         if team_name:
+            # roster is now available as an option
+            options.append({'option': 'roster', 'desc': 'view team\'s current roster'})
             user_input = display_team_info(team_name)
             prev_page = current_page
-            current_page = 'team'
+            current_page = 'team ' + team_name
         else:
             user_input = display_invalid()
-    elif current_page == 'team' and user_input == 'roster':
-        user_input = display_roster_names()
-    elif user_input == 'back':
-        user_input = handle_back(prev_page)
+            
+    elif current_page.split(' ', 1)[0] == 'team' and user_input == 'roster':
+        # split page and grab second word, pass into display roster
+        team_name = current_page.split(' ', 1)[1]
+        user_input = display_roster_names(team_name)
+    
+    elif user_input == 'back':    
+        print(f"Returning to {prev_page}")
+        user_input = prev_page
         temp = current_page
         current_page = prev_page
         prev_page = temp
-    elif user_input != 'exit':
+        
+    elif user_input == 'exit':
+        result = yes_no_dialog(
+            title='Confirm exit',
+            text='Are you sure you would like to quit the program?',
+            style=Style.from_dict({
+                'dialog':             'bg:black',
+                # 'dialog frame.label': 'bg:green',
+                # 'dialog.body':        'bg:white whitte',
+                # 'dialog shadow':      'bg:gray',
+                
+                })
+            ).run()
+        if result: exit()
+        else: user_input = current_page
+        
+    else:
         user_input = display_invalid()
