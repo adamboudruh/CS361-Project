@@ -53,6 +53,8 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.completion import WordCompleter, NestedCompleter
 from rich.table import Table
 from rich.console import Console
+from bs4 import BeautifulSoup
+import requests
 
 
 # Load team aliases from teams.json
@@ -62,11 +64,30 @@ with open('teams.json', 'r') as f:
 options = [
     {'option': 'standings', 'desc': 'view current eastern and western conference standings'},
     {'option': 'home', 'desc': 'return to homepage'},
-    {'option': 'team <team_name>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'team <name>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'back', 'desc': 'return to the previous page'},
     {'option': 'exit', 'desc': 'quit the program'}
 ]
 
-options_completer = WordCompleter([option['option'] for option in options])
+# print(teams['teams'])
+team_completer_dict = {team: None for team in teams['teams']}
+options_completer = NestedCompleter.from_nested_dict({
+    'standings': None,
+    'home': None,
+    'team': team_completer_dict,   # loads all city and team names
+    'back': None,
+    'exit': None,
+})
+
+options_completer_r = NestedCompleter.from_nested_dict({
+    'roster': None,
+    'standings': None,
+    'home': None,
+    'team': team_completer_dict,   # loads all city and team names
+    'back': None,
+    'exit': None,
+})
+
 
 def print_options():
     print('\nOptions:')
@@ -135,24 +156,68 @@ def display_standings():
 def display_team_info(team_name):
     print(f"Displaying information for {team_name}")
     # Add logic to display team information
+    
+    
     print_options()
     options.pop()
-    return prompt("Enter your choice: ")
+    return prompt("Enter your choice: ", completer=WordCompleter(['roster', 'standings', 'home', 'back', 'exit']))
 
-def display_roster_names():
+def display_roster_names(team_name):
     print("Displaying roster names")
     # Add logic to display roster names
-    return input("Enter your choice: ")
+    abr = team_name.upper()
+    print(abr)
+    url = f'https://www.basketball-reference.com/teams/{abr}/2025.html'
+    """
+    name = text field of second span of only h1 tag in document
+    """
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    name = soup.find('h1').find_all('span')[1].text
+    
+    print(name)
+    table_roster = Table(title=f"{name} Roster")
+    
+    table_roster.add_column("Number", justify="left", style="white",)
+    table_roster.add_column("Name", justify="left", style="white")
+    table_roster.add_column("Height", justify="right", style="white")
+    table_roster.add_column("Position", justify="right", style="blue")
+    
+    page_roster = soup.find('table', id='roster')
+    for row in page_roster.find('tbody').find_all('tr'):
+        number = row.find('th', {'data-stat': 'number'}).text
+        name = row.find('td', {'data-stat': 'player'}).text
+        position = row.find('td', {'data-stat': 'pos'}).text
+        height = row.find('td', {'data-stat': 'height'}).text
+        table_roster.add_row(number, name, height, position)
+    
+    console = Console()
+    console.print(table_roster)
+    """
+        use beautiful soup, find <table> with id="roster"
+            for each row, make a row in the table
+            number: text field of data-stat="number"
+            name: text field of data-stat="player"
+            position: text field of data-stat="pos"
+            height: text field of data-stat"height"
+            
+        
+    """
+    print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
 
 def display_invalid():
     print("Invalid input. Please try again.")
-    return input("Enter your choice: ")
+    return prompt("Enter your choice: ", completer=options_completer)
 
 prev_page = ''
 current_page = 'home'
 user_input = display_home()
 
 while user_input:
+    print(f"Current page: {current_page}, Previous page: {prev_page}\n")
+    
+    if prev_page.startswith('team'): options.pop()
     
     if user_input == 'home':
         user_input = display_home()
