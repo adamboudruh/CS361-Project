@@ -7,6 +7,8 @@ from prompt_toolkit.completion import WordCompleter, NestedCompleter
 from rich.table import Table
 from rich.console import Console
 from bs4 import BeautifulSoup
+from nba_api.stats.static import players
+from nba_api.stats.endpoints import playerprofilev2
 import requests
 
 
@@ -28,12 +30,12 @@ options = [
 # print(teams['teams'])
 team_completer_dict = {team: None for team in teams['teams']}
 
-
 options_completer = NestedCompleter.from_nested_dict({
     'standings': None,
     'compare': None,
     'home': None,
     'team': team_completer_dict,   # loads all city and team names
+    'player': None,
     'back': None,
     'exit': None,
 })
@@ -174,6 +176,23 @@ def display_roster_names(team_name):
     print_options()
     return prompt("Enter your choice: ", completer=options_completer)
 
+def display_player_data(id):
+    stats = playerprofilev2.PlayerProfileV2(player_id=id, per_mode36='PerGame')
+    totals = stats.season_totals_regular_season.get_dict()
+    data = totals['data']
+    if data:
+        # make a get request to http://127.0.0.1:5000/player/{player_id} and print whatever is returned
+        response = requests.get(f'http://127.0.0.1:5000/player/{id}')
+        if response.status_code == 200:
+            print(response.json())
+        else:
+            print(f"Failed to retrieve data: {response.status_code}")
+        print(json.dumps(data[-1], indent=4))
+    else:
+        print("No data available")
+    print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
+    
 def display_invalid():
     print("Invalid input. Please try again.")
     return prompt("Enter your choice: ", completer=options_completer)
@@ -209,6 +228,28 @@ while user_input:
         team_name = current_page.split(' ', 1)[1]
         prev_pages.append(current_page)
         user_input = display_roster_names(team_name)
+        
+    elif user_input.split(' ', 1)[0] == 'player':
+        player_name = ' '.join(user_input.split(' ')[1:])
+        prev_pages.append(current_page)
+        
+        # gather all players with matching name
+        playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
+        
+        # if more than one player, ask user to specify
+        while len(playerlist) > 1:
+            print("\nYour request brought up multiple players: \n")
+            playerlist_names = []
+            for player in playerlist:
+                print(player['full_name'])
+                playerlist_names.append(player['full_name'])
+            player_completer = WordCompleter(playerlist_names, ignore_case=True)
+            player_name = prompt("\nPlease specify one of the above: ", completer=player_completer)
+            playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
+        if len(playerlist) == 1:
+            user_input = display_player_data(playerlist[0]['id'])
+        else:
+            display_invalid()
     
     elif user_input == 'back':
         if prev_pages:
