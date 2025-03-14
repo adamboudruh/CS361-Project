@@ -19,10 +19,11 @@ with open('teams.json', 'r') as f:
 options = [
     {'option': 'standings', 'desc': 'view current eastern and western conference standings'},
     {'option': 'home', 'desc': 'return to homepage'},
-    {'option': 'team <name>', 'desc': 'view a current team\'s season statistics'},
-    {'option': 'player <player first name> <player last name>', 'desc': 'view a player\'s current season stats'},
+    {'option': 'team <[blue]name[/blue]>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'player <[blue]player name[/blue]>', 'desc': 'view a player\'s current season stats'},
     {'option': 'compare', 'desc': 'view a comparison between two NBA players of your choosing'},
-    {'option': 'team <name>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'help', 'desc': 'ask an AI helper a question about basketball and its rules or history'},
+    {'option': 'team <[blue]name[/blue]>', 'desc': 'view a current team\'s season statistics'},
     {'option': 'back', 'desc': 'return to the previous page'},
     {'option': 'exit', 'desc': 'quit the program'}
 ]
@@ -36,6 +37,8 @@ options_completer = NestedCompleter.from_nested_dict({
     'home': None,
     'team': team_completer_dict,   # loads all city and team names
     'player': None,
+    'compare': None,
+    'help': None,
     'back': None,
     'exit': None,
 })
@@ -43,16 +46,21 @@ options_completer = NestedCompleter.from_nested_dict({
 options_completer_r = NestedCompleter.from_nested_dict({
     'roster': None,
     'standings': None,
+    'compare': None,
     'home': None,
     'team': team_completer_dict,   # loads all city and team names
+    'player': None,
+    'compare': None,
+    'help': None,
     'back': None,
     'exit': None,
 })
 
 def print_options():
-    print('\nOptions:')
+    console = Console()
+    console.print('\n[b][purple]Options:[/purple][/b]')
     for option in options:
-        print(f"\t{option['option']}: {option['desc']}")
+        console.print(f"\t[b]{option['option']}:[/b] {option['desc']}")
 
 def get_team_name(alias):
     for team in teams['aliases']:
@@ -110,11 +118,11 @@ def display_standings():
             pct = round(wins / (wins + losses), 3)
             table_west.add_row(team_name, str(wins), str(losses), str(pct))
 
-    print('\n')
+    print()
     console.print(table_west)
     
     print_options()
-    return prompt("Enter your choice: ")
+    return prompt("Enter your choice: ", completer=options_completer)
 
 def display_team_info(team_name):
     print("\n\n")
@@ -222,7 +230,17 @@ def color_stat(stat1, stat2):
     else:
         return ("[red]" + str(stat1) + "[/red]", "[green]" + str(stat2) + "[/green]")
     
-    
+def display_ai_help():
+    question = prompt("\nPlease enter your basketball question below and I'll do my best to answer it!\nQuestion: ")
+    response = requests.post('http://127.0.0.1:3003/help', json={'question': question})
+    console = Console()
+    if response.status_code == 200:
+        answer = response.json().get('answer', 'Sorry, I could not find an answer to your question.')
+        console.print(f"\n[b]Answer:[/b] {answer}")
+    else:
+        print(f"Failed to retrieve answer: {response.status_code}")
+    print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
     
 def display_comparison():
     player1 = None
@@ -333,7 +351,9 @@ while user_input:
         prev_pages.append(current_page)
         user_input = display_comparison()
         
-        
+    elif user_input == "help":
+        prev_pages.append(current_page)
+        user_input = display_ai_help()
     
     elif user_input == 'back':
         if prev_pages:
