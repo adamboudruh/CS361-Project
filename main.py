@@ -176,20 +176,91 @@ def display_roster_names(team_name):
     print_options()
     return prompt("Enter your choice: ", completer=options_completer)
 
-def display_player_data(id):
-    stats = playerprofilev2.PlayerProfileV2(player_id=id, per_mode36='PerGame')
+def display_player_data(player):
+    stats = playerprofilev2.PlayerProfileV2(player_id=player['id'], per_mode36='PerGame')
     totals = stats.season_totals_regular_season.get_dict()
-    data = totals['data']
-    if data:
-        # make a get request to http://127.0.0.1:5000/player/{player_id} and print whatever is returned
-        response = requests.get(f'http://127.0.0.1:5000/player/{id}')
+    rankings = stats.season_rankings_regular_season.get_dict()
+    if stats:
+        total_indices = ['PTS', 'REB', 'AST', 'MIN', 'FG3_PCT', 'FG3A', 'STL', 'BLK', 'TOV']
+        rank_indices = ['RANK_PG_PTS', 'RANK_PG_REB', 'RANK_PG_AST', 'RANK_PG_MIN', 'RANK_FG3_PCT', 'RANK_PG_FG3A', 'RANK_PG_STL', 'RANK_PG_BLK', 'RANK_PG_TOV']
+        #index_names = ['Points Per Game', 'Rebounds Per Game', 'Assists Per Game', 'Minutes Per Game', 'Three-Point Percentage', 'Three-Point Attempts', 'Steals Per Game', 'Blocks Per Game', 'Turnovers Per Game']
+        stats_table = Table(title=f"{player['full_name']} Current Season Stats")
+        stats_table.add_column("Stat", justify="left", style="white")
+        stats_table.add_column("#", justify="right", style="white")
+        stats_table.add_column("Rank", justify="right", style="white")
+        for i in range(len(total_indices)):
+            # add a row containing the data point under each of the three indices
+            total_index = totals['headers'].index(total_indices[i])
+            rank_index = rankings['headers'].index(rank_indices[i])
+            stat_name = total_indices[i]
+            stat_value = totals['data'][-1][total_index]
+            stat_rank = rankings['data'][-1][rank_index]
+            if stat_rank:
+                rank_style = "green" if stat_rank < 10 else "white"
+            else:
+                stat_rank = "Unranked"
+            stats_table.add_row(stat_name, str(stat_value), f"[{rank_style}]{stat_rank}[/{rank_style}]")
+        
+        # make a get request to microservice B and print whatever is returned
+        response = requests.get(f'http://127.0.0.1:3001/player/{player['id']}')
         if response.status_code == 200:
             print(response.json())
+            console = Console()
+            print("\n")
+            console.print(stats_table)
         else:
             print(f"Failed to retrieve data: {response.status_code}")
-        print(json.dumps(data[-1], indent=4))
     else:
         print("No data available")
+    print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
+   
+# styles each of the colors depending on which plater has the higher stat
+def color_stat(stat1, stat2):
+    if stat1 > stat2:
+        return ("[green]" + str(stat1) + "[/green]", "[red]" + str(stat2) + "[/red]")
+    else:
+        return ("[red]" + str(stat1) + "[/red]", "[green]" + str(stat2) + "[/green]")
+    
+    
+    
+def display_comparison():
+    player1 = None
+    player2 = None
+    while player1 is None:
+        player1_name = prompt("\nPlease enter the first player: ")
+        player1 = find_player(player1_name)
+        if player1 is None: print("Player with that name not found.")
+    print(f"Player1: {player1['full_name']}")
+    while player2 is None:
+        player2_name = prompt("\nPlease enter the second player: ")
+        player2 = find_player(player2_name)
+        if player2 is None: print("Player with that name not found.")
+    print(f"Player2: {player2['full_name']}")
+    comp_path = f"http://127.0.0.1:3002/player/comp?id_1={player1['id']}&id_2={player2['id']}"
+    response = requests.get(comp_path)
+    if response.status_code == 200:
+        totals1 = response.json()['totals1']
+        totals2 = response.json()['totals2']
+        table = Table(title=f"{player1['full_name']} vs. {player2['full_name']}")
+        table.add_column("Stat", justify="left", style="white")
+        table.add_column(f"{player1['full_name']}", justify="right", style="white")
+        table.add_column(f"{player2['full_name']}", justify="right", style="white")
+        
+        total_indices = ['PTS', 'REB', 'AST', 'MIN', 'FG3_PCT', 'FG3A', 'STL', 'BLK', 'TOV']
+
+        for i in range(len(total_indices)):
+            index = totals1['headers'].index(total_indices[i])
+            stat1 = totals1['data'][-1][index]
+            stat2 = totals2['data'][-1][index]
+            colored_stat1, colored_stat2 = color_stat(stat1, stat2)
+            table.add_row(total_indices[i], colored_stat1, colored_stat2)
+        
+        console = Console()
+        print()
+        console.print(table)
+    else:
+        print(f"Failed to retrieve comparison data: {response.status_code}")
     print_options()
     return prompt("Enter your choice: ", completer=options_completer)
     
@@ -200,6 +271,24 @@ def display_invalid():
 prev_pages = []
 current_page = 'home'
 user_input = display_home()
+
+def find_player(player_name):
+    # gather all players with matching name
+    playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
+    
+    # if more than one player, ask user to specify
+    while len(playerlist) > 1:
+        print("\nYour request brought up multiple players: \n")
+        playerlist_names = []
+        for player in playerlist:
+            print(player['full_name'])
+            playerlist_names.append(player['full_name'])
+        player_completer = WordCompleter(playerlist_names, ignore_case=True)
+        player_name = prompt("\nPlease specify one of the above: ", completer=player_completer)
+        playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
+    if len(playerlist) == 1:
+        return playerlist[0]
+    else: return None
 
 while user_input:
     
@@ -233,23 +322,18 @@ while user_input:
         player_name = ' '.join(user_input.split(' ')[1:])
         prev_pages.append(current_page)
         
-        # gather all players with matching name
-        playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
-        
-        # if more than one player, ask user to specify
-        while len(playerlist) > 1:
-            print("\nYour request brought up multiple players: \n")
-            playerlist_names = []
-            for player in playerlist:
-                print(player['full_name'])
-                playerlist_names.append(player['full_name'])
-            player_completer = WordCompleter(playerlist_names, ignore_case=True)
-            player_name = prompt("\nPlease specify one of the above: ", completer=player_completer)
-            playerlist = [player for player in players.find_players_by_full_name(player_name) if player['is_active']]
-        if len(playerlist) == 1:
-            user_input = display_player_data(playerlist[0]['id'])
+        player = find_player(player_name)
+        print(player)
+        if player: 
+            user_input = display_player_data(player)
         else:
-            display_invalid()
+            user_input = display_invalid()
+    
+    elif user_input == "compare":
+        prev_pages.append(current_page)
+        user_input = display_comparison()
+        
+        
     
     elif user_input == 'back':
         if prev_pages:
