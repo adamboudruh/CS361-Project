@@ -10,7 +10,8 @@ from bs4 import BeautifulSoup
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playerprofilev2
 import requests
-
+import time
+import json
 
 # Load team aliases from teams.json
 with open('teams.json', 'r') as f:
@@ -24,6 +25,7 @@ options = [
     {'option': 'compare', 'desc': 'view a comparison between two NBA players of your choosing'},
     {'option': 'help', 'desc': 'ask an AI helper a question about basketball and its rules or history'},
     {'option': 'team <[blue]name[/blue]>', 'desc': 'view a current team\'s season statistics'},
+    {'option': 'news', 'desc': 'view a couple recent basketball headlines'},
     {'option': 'back', 'desc': 'return to the previous page'},
     {'option': 'exit', 'desc': 'quit the program'}
 ]
@@ -39,6 +41,7 @@ options_completer = NestedCompleter.from_nested_dict({
     'player': None,
     'compare': None,
     'help': None,
+    'news': None,
     'back': None,
     'exit': None,
 })
@@ -52,6 +55,7 @@ options_completer_r = NestedCompleter.from_nested_dict({
     'player': None,
     'compare': None,
     'help': None,
+    'news': None,
     'back': None,
     'exit': None,
 })
@@ -282,9 +286,59 @@ def display_comparison():
     print_options()
     return prompt("Enter your choice: ", completer=options_completer)
     
+def display_headlines():
+    print('\nGrabbing the latest headlines...')
+    
+    with open('./microservice_a/CS361-Assignment8-MicroserviceA/detailed_news.txt', 'w') as f:  
+        f.write('')
+    
+    with open('./microservice_a/CS361-Assignment8-MicroserviceA/request_receive.txt', 'w') as f:  
+        f.write('nba, 5')
+    
+    while True:
+        time.sleep(3)
+        with open('./microservice_a/CS361-Assignment8-MicroserviceA/detailed_news.txt', 'r+') as f:
+            check = f.read()
+            if check != '':
+                #print(check)
+                break
+    
+    # Convert check to a json object called content, access articles array inside
+    content = json.loads(check)
+    articles = content.get('articles', [])
+    console = Console()
+    for article in articles:
+        publisher = article['source']['name']
+        author = article['author']
+        url = article['url']
+        title = article['title']
+        desc = article['description']
+        console.print(f"\n[b][green]{title}[/green][/b]\n[b]Author: [/b]{author}, [b]Published by: [/b]{publisher} \n[b]Description:[/b] {desc}\n[b]Read more at: [/b]{url}")
+        
+    # console = Console()
+    # table = Table(title="Recent Basketball Headlines")
+    
+    # table.add_column("Title", justify="left", style="cyan", no_wrap=True)
+    # table.add_column("Description", justify="left", style="white")
+    
+    # for article in articles:
+    #     title = article.get('title', 'No Title')
+    #     description = article.get('description', 'No Description')
+    #     table.add_row(title, description)
+    
+    # console.print(table)
+    # print_options()
+    return prompt("Enter your choice: ", completer=options_completer)
+    
+    
+    
+    
+    
 def display_invalid():
     print("Invalid input. Please try again.")
     return prompt("Enter your choice: ", completer=options_completer)
+    
+
 
 prev_pages = []
 current_page = 'home'
@@ -354,6 +408,10 @@ while user_input:
     elif user_input == "help":
         prev_pages.append(current_page)
         user_input = display_ai_help()
+        
+    elif user_input == "news":
+        prev_pages.append(current_page)
+        user_input = display_headlines()
     
     elif user_input == 'back':
         if prev_pages:
